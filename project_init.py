@@ -113,14 +113,14 @@ CMD ["python", "{self.main_file}" ]
             return
        if system()=='Windows':
            if self.env_builder=='anaconda':
-               env_cmd = f'''
-               @echo off
-               conda create --name {self.env_name} --yes
-               conda activate {self.env_name}
-               FOR /F "delims=~" %%f in (requirements.txt) DO conda install --yes "%%f" || conda install --yes -c conda-forge "%%f" || pip install "%%f"
-               echo All requirements have been installed
-               echo You can safely delete this file now
-               cmd /K'''
+               env_cmd = \
+f'''@echo off
+conda create --name {self.env_name} --yes
+conda activate {self.env_name}
+FOR /F "delims=~" %%f in (requirements.txt) DO conda install --yes "%%f" || conda install --yes -c conda-forge "%%f" || pip install "%%f"
+echo All requirements have been installed
+echo You can safely delete this file now
+cmd /K'''
 
            elif self.env_builder=='virtualenv':
                if 'USERPROFILE' in list(environ.keys()):
@@ -129,14 +129,14 @@ CMD ["python", "{self.main_file}" ]
                    prefix = ''
                    print('Warning: The User Profile prefix was not found in the enviornment variables. '
                          'The environment setup script needs to be adapted. To do this, locate the "activate.bat" file in your virtual environ setup.')
-               env_cmd = f'''
-                    pip install virtualenv
-                    virtualenv {self.env_name}
-                    {prefix}\\{self.env_name}\\Scripts\\activate.bat
-                    FOR /F "delims=~" %%f in (requirements.txt) DO pip install "%%f"
-                    echo All requirements have been installed
-                    echo You can safely delete this file now
-                    cmd /K'''
+               env_cmd = \
+f'''pip install virtualenv
+virtualenv {self.env_name}
+{prefix}\\{self.env_name}\\Scripts\\activate.bat
+FOR /F "delims=~" %%f in (requirements.txt) DO pip install "%%f"
+echo All requirements have been installed
+echo You can safely delete this file now
+cmd /K'''
            with open(f'setup_{self.env_name}_env.bat', 'w') as env_setup:
                env_setup.write(env_cmd)
            print(f'Successfully create an environment setup script for {self.env_name}. Run it once to create the environment. Afterwards, it can safely be deleted')
@@ -147,10 +147,9 @@ CMD ["python", "{self.main_file}" ]
         Path('notebooks').mkdir(exist_ok=True)
         if system() == 'Windows':
             if self.env_builder == 'anaconda':
-                jupyter_cmd = f'''
-                conda activate {self.env_name}
-                jupyter {self.jupyter}
-                '''
+                jupyter_cmd = \
+f'''conda activate {self.env_name}
+jupyter {self.jupyter}'''
             elif self.env_builder == 'virtualenv':
                 if 'USERPROFILE' in list(environ.keys()):
                     prefix = environ['USERPROFILE']
@@ -158,10 +157,9 @@ CMD ["python", "{self.main_file}" ]
                     prefix = ''
                     print('Warning: The User Profile prefix was not found in the enviornment variables. '
                           'The jupyter setup script needs to be adapted. To do provide the full path to locate the "activate.bat" file in your virtual directory.')
-                jupyter_cmd = f'''
-                {prefix}\\{self.env_name}\\Scripts\\activate.bat
-                jupyter {self.jupyter}
-                '''
+                jupyter_cmd = \
+f'''{prefix}\\{self.env_name}\\Scripts\\activate.bat
+jupyter {self.jupyter}'''
         with open('notebooks/launch_jupyter.bat', 'w') as jupyter:
             jupyter.write(jupyter_cmd)
         print(f"Successfully create a jupyter {self.jupyter} launcher batch file which can be used to activate"
@@ -194,6 +192,8 @@ Contact Information = {self.e_mail}
 f'''git init
 git add .
 git commit -m "initial commit"
+echo You can safely delete this file now
+cmd /K
             '''
             with open('init_git.bat','w') as file:
                 file.write(git_cmd)
@@ -276,7 +276,7 @@ if __name__ == "__main__":
         help='The name of the virtuel environment to be created'
     )
     parser.add_argument(
-        '--environemnt_engine',
+        '--environment_engine',
         '-eng',
         type=str,
         required=False,
@@ -329,7 +329,10 @@ if __name__ == "__main__":
         requirements=args['packages'],
         docker=args['docker'],
         project_name=args['project_name'],
-        git=args['git']
+        git=args['git'],
+        env_name=args['environment'],
+        env_builder=args['environment_engine'],
+        jupyter=args['jupyter']
     )
     project_init.create_dir()
     project_init.create_requirements()
