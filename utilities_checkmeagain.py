@@ -824,6 +824,8 @@ call jupyter {2}
 python >= {0}
 # Documentation
 Add documentation info here
+# Installation
+
 # Usage
 # Author
 Author of this repo = {1}

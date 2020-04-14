@@ -1,4 +1,5 @@
-from os import makedirs, getcwd, environ
+from os import environ
+from platform import system
 import argparse
 from packaging import version
 import requests
@@ -11,6 +12,7 @@ root_dir = Path.cwd().resolve()
 class Project_Initializer:
     # def create makefile
     def __init__(self,
+                 project_name,
                  user ,
                  e_mail,
                  python_version,
@@ -18,9 +20,13 @@ class Project_Initializer:
                  root_dir,
                  dirs,
                  requirements,
-                 docker = True,
-                 readme = True,
-                 conda_env = True):
+                 docker = '',
+                 env_name = '',
+                 readme = 'y',
+                 git = 'y',
+                 env_builder = '',
+                 jupyter= ''):
+        self.project_name = project_name
         self.user = user
         self.e_mail = e_mail
         self.python_version = python_version
@@ -29,9 +35,29 @@ class Project_Initializer:
         self.dirs = dirs
         self.requirements = requirements
         self.docker = docker
+        self.env_name = env_name
         self.readme = readme
-        self.conda_env = conda_env
+        self.git = git
+        self.env_builder = env_builder
+        self.jupyter = jupyter
 
+    def create_Dockerfile(self,):
+        image = '-' + self.docker if self.docker else ''
+        docker = f"""
+FROM python:{self.python_version}{image}
+MAINTAINER {self.user} "{self.e_mail}"
+RUN apt-get update \
+    && apt-get --yes install g++ \
+    && apt-get clean
+WORKDIR /app
+COPY requirements.txt /app
+COPY src /app 
+RUN pip install -r requirements.txt
+CMD ["python", "{self.main_file}" ]
+        """
+        with open('Dockerfile', 'w') as dfile:
+            dfile.write(docker)
+        print('Successfully generated a Dockerfile')
 
     def create_dir(self):
         '''
@@ -43,7 +69,7 @@ class Project_Initializer:
             print(f'Create or replacing subdirectory {d}')
             Path(d).mkdir(exist_ok=True)
 
-    def parse_package_args(self):
+    def create_requirements(self):
         if self.requirements:
             packages_with_version = [f for f in self.requirements if '==' in f]
             packages_without_version = self.list_diff(self.requirements,packages_with_version)
@@ -82,9 +108,108 @@ class Project_Initializer:
             print(f'Package {package} was not found at pypi. You need to add the version number in the requirement.txt file afterwards.')
             return
 
+    def create_env(self):
+       if not self.env_builder:
+            return
+       if system()=='Windows':
+           if self.env_builder=='anaconda':
+               env_cmd = f'''
+               @echo off
+               conda create --name {self.env_name} --yes
+               conda activate {self.env_name}
+               FOR /F "delims=~" %%f in (requirements.txt) DO conda install --yes "%%f" || conda install --yes -c conda-forge "%%f" || pip install "%%f"
+               echo All requirements have been installed
+               echo You can safely delete this file now
+               cmd /K'''
+
+           elif self.env_builder=='virtualenv':
+               if 'USERPROFILE' in list(environ.keys()):
+                   prefix = environ['USERPROFILE']
+               else:
+                   prefix = ''
+                   print('Warning: The User Profile prefix was not found in the enviornment variables. '
+                         'The environment setup script needs to be adapted. To do this, locate the "activate.bat" file in your virtual environ setup.')
+               env_cmd = f'''
+                    pip install virtualenv
+                    virtualenv {self.env_name}
+                    {prefix}\\{self.env_name}\\Scripts\\activate.bat
+                    FOR /F "delims=~" %%f in (requirements.txt) DO pip install "%%f"
+                    echo All requirements have been installed
+                    echo You can safely delete this file now
+                    cmd /K'''
+           with open(f'setup_{self.env_name}_env.bat', 'w') as env_setup:
+               env_setup.write(env_cmd)
+           print(f'Successfully create an environment setup script for {self.env_name}. Run it once to create the environment. Afterwards, it can safely be deleted')
+
+    def create_jupyter(self):
+        if not self.jupyter:
+            return
+        Path('notebooks').mkdir(exist_ok=True)
+        if system() == 'Windows':
+            if self.env_builder == 'anaconda':
+                jupyter_cmd = f'''
+                conda activate {self.env_name}
+                jupyter {self.jupyter}
+                '''
+            elif self.env_builder == 'virtualenv':
+                if 'USERPROFILE' in list(environ.keys()):
+                    prefix = environ['USERPROFILE']
+                else:
+                    prefix = ''
+                    print('Warning: The User Profile prefix was not found in the enviornment variables. '
+                          'The jupyter setup script needs to be adapted. To do provide the full path to locate the "activate.bat" file in your virtual directory.')
+                jupyter_cmd = f'''
+                {prefix}\\{self.env_name}\\Scripts\\activate.bat
+                jupyter {self.jupyter}
+                '''
+        with open('notebooks/launch_jupyter.bat', 'w') as jupyter:
+            jupyter.write(jupyter_cmd)
+        print(f"Successfully create a jupyter {self.jupyter} launcher batch file which can be used to activate"
+              f" the '{self.env_name}' environment and work in a jupyter {self.jupyter} environment")
+
+
+    def create_readme(self):
+        if self.readme =='y':
+            readme_cmd = \
+f'''
+# {self.project_name}
+# Prerequisites
+python >= {self.python_version}
+# Documentation
+Add documentation info here
+# Installation
+
+# Usage
+# Author
+Author of this repo = {self.user}
+Contact Information = {self.e_mail}
+'''
+            with open('README.md', 'w') as readme:
+                readme.write(readme_cmd)
+            print('Successfully created a README.md file')
+
+    def create_git(self):
+        if self.git == 'y':
+            git_cmd = \
+f'''git init
+git add .
+git commit -m "initial commit"
+            '''
+            with open('init_git.bat','w') as file:
+                file.write(git_cmd)
+            print('Created a "init_git.bat" batch file which can be called once. It can safely deleted afterwards')
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Module for creating a Python-based Machine Learning directory.')
+    parser.add_argument(
+        '--project_name',
+        '-n',
+        default='My_Project',
+        type=str,
+        required=False,
+        help= 'Indicates the Project Name'
+    )
     parser.add_argument(
         "-u",
         "--user",
@@ -100,6 +225,13 @@ if __name__ == "__main__":
         required=False,
         default='John.Doe@ibm.com',
         help='The author"s e-mail address for contact information',
+    )
+    parser.add_argument(
+        '--readme',
+        '-rd',
+        type=str,
+        default='y',
+        help='If set to y, it creates a first draft of a README.md file'
     )
     parser.add_argument(
         "-v",
@@ -126,8 +258,43 @@ if __name__ == "__main__":
         help='The main file',
     )
     parser.add_argument(
+        '--docker',
+        '-doc',
+        type=str,
+        required=False,
+        default='',
+        #choices=['slim',]
+        help='A string of the Python Dockerhub for specifiyng the Docker image. Available images can be found here:\nhttps://hub.docker.com/_/python'
+
+    )
+    parser.add_argument(
+        '--environment',
+        '-e',
+        type=str,
+        required=False,
+        default='',
+        help='The name of the virtuel environment to be created'
+    )
+    parser.add_argument(
+        '--environemnt_engine',
+        '-eng',
+        type=str,
+        required=False,
+        default='',
+        choices=['anaconda','virtualenv'],
+        help='Indicates how the virtual environment shall be built. At the moment, virtualenv or Anaconda can be used'
+    )
+    parser.add_argument(
+        '--jupyter',
+        '-j',
+        type=str,
+        default='',
+        choices=['notebook','lab'],
+        help='Indicates if a jupyter lab or notebook shall be created upon project creation.'
+    )
+    parser.add_argument(
         '-d',
-        '--dirs',
+        '--directories',
         type=str,
         nargs='+',
         required=False,
@@ -144,6 +311,13 @@ if __name__ == "__main__":
         help='A list of all packages written to a requirement file. If you want to add a version number, add the packages followed by "==" and the version.'
              ' If only given the package name, an automated search will retrieve the latest version and write it into the requirement file.'
     )
+    parser.add_argument(
+        '--git',
+        '-g',
+        type=str,
+        default='y',
+        help='Indicates if a initialization script for git shall be created. y if so'
+    )
     args = vars(parser.parse_args())
     project_init = Project_Initializer(
         user=args['user'],
@@ -151,10 +325,16 @@ if __name__ == "__main__":
         python_version=args['python_version'],
         root_dir = args['root'],
         main_file=args['file'],
-        dirs= args['dirs'],
-        requirements=args['packages']
+        dirs= args['directories'],
+        requirements=args['packages'],
+        docker=args['docker'],
+        project_name=args['project_name'],
+        git=args['git']
     )
-    print(args)
-    print(project_init)
     project_init.create_dir()
-    project_init.parse_package_args()
+    project_init.create_requirements()
+    project_init.create_Dockerfile()
+    project_init.create_env()
+    project_init.create_jupyter()
+    project_init.create_git()
+    project_init.create_readme()
