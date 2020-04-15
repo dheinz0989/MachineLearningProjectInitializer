@@ -2,7 +2,6 @@ from os import environ
 from platform import system
 import argparse
 from packaging import version
-import subprocess
 import requests
 from pathlib import Path
 
@@ -229,11 +228,19 @@ Contact Information = {self.e_mail}
 
     def create_git(self):
         if self.git == 'y':
-            commands = ['git init','git add .','git commit -m "initial commit"']
-            for cmd in commands:
-                
-            print('Initializing a git repository')
-
+            git_cmd = \
+f'''@echo off
+git init
+git add .
+git commit -m "initial commit"
+echo Repository has been initiliazed
+echo You can safely delete this file now
+cmd /K
+            '''
+            file = self.root_dir.joinpath('init_git.bat')
+            with open(file, 'w') as file:
+                file.write(git_cmd)
+            print('Created a "init_git.bat" batch file which can be called once. It can safely deleted afterwards')
 
     def create_main(self):
         file = self.root_dir.joinpath(f'src/{self.main_file}')
