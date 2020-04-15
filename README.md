@@ -8,23 +8,23 @@ This short module has only one function to use: it initializes a directory and c
 - it can add a requirement.txt files (for instance, used by Docker) <br />
 - It can also create an "app.y" found in the src directory. <br />
 
-Myrepo/
-├── admin/
-├── cache/
-├── data/
-├── Dockerfile
-├── docs/
-├── ims/
-├── logs/
-├── models/
-├── notebooks/
-│   └── launch_jupyter.bat
-├── README.md
-├── reports/
-├── requirements.txt
-├── src/
-│   └── app.py
-└── test/
+Myrepo/ <br />
+├── admin/ <br />
+├── cache/ <br />
+├── data/ <br />
+├── Dockerfile <br />
+├── docs/ <br />
+├── ims/ <br />
+├── logs/ <br />
+├── models/ <br />
+├── notebooks/ <br />
+│   └── launch_jupyter.bat <br />
+├── README.md <br />
+├── reports/ <br /> 
+├── requirements.txt <br />
+├── src/ <br />
+│   └── app.py <br />
+└── test/ <br />
 
 # Prerequisits
 The source code is written in [Python 3.8](https://www.python.org/). It use the standard libraries *pathlib*, *platform*, *os*, *re*, *subprocess* and *argparse*.
