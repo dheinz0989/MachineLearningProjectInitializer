@@ -39,6 +39,11 @@ class Project_Initializer:
 
 
     def create_Dockerfile(self,):
+        """
+        Creates a Dockerfile by inserting the main file, Python version, the user name, user e-mail, an Docker Image specification
+
+        :return:
+        """
         image = '-' + self.docker if self.docker else ''
         docker = f"""
 FROM python:{self.python_version}{image}
@@ -59,7 +64,7 @@ CMD ["python", "{self.main_file}" ]
 
     def create_dir(self):
         '''
-        Creates all directories mentioned in the .dirs attribute
+        Creates all directories provided by the -d paramater
 
         :return:
         '''
@@ -68,6 +73,12 @@ CMD ["python", "{self.main_file}" ]
             self.root_dir.joinpath(d).mkdir(exist_ok=True)
 
     def create_requirements(self):
+        """
+        Creates a requirement files. For each package provided in the package list, it checks the installed version and adds it to it.
+        It also checks whether a package is given with a specified version
+
+        :return:
+        """
         if self.requirements:
             out = []
             for p in self.requirements:
@@ -87,7 +98,14 @@ CMD ["python", "{self.main_file}" ]
 
 
     def create_Conda_env(self):
-       if system()=='Windows':
+        """
+        Creates the virtual environment by calling the Anaconda command for this.
+        It first checks if the requirements for jupyter notebook/labs have to be added and adds them if so.
+        Afterwards, runs the conda virtual environment builder command.
+
+        :return:
+        """
+        if system()=='Windows':
             print('Creating a virtual environment using Anaconda')
             jupyter_nb = [p for p in self.requirements if 'notebook' in p]
             jupyter_lab = [p for p in self.requirements if 'jupyterlab' in p]
@@ -103,6 +121,11 @@ CMD ["python", "{self.main_file}" ]
             print(rc)
 
     def create_jupyter_anaconda(self):
+        """
+        Creates a batch file which can be used to launch a jupyter lab/notebook instance using the virtual environment created within this repo.
+
+        :return:
+        """
         if system() == 'Windows':
             Path('notebooks').mkdir(exist_ok=True)
             if 'CONDA_PREFIX' in list(environ.keys()):
@@ -125,6 +148,10 @@ CALL jupyter {self.jupyter}'''
                   f" the '{self.env_name}' environment and work in a jupyter {self.jupyter} environment")
 
     def create_readme(self):
+        """
+        Writes a README.md file with inserting the project name, user name, e-mail and the required Python version.
+        :return:
+        """
         readme_cmd = \
 f'''
 # {self.project_name}
@@ -145,6 +172,11 @@ Contact Information = {self.e_mail}
         print('Successfully created a README.md file')
 
     def initialize_git(self):
+        """
+        git-initializes the directory which was just created.
+
+        :return:
+        """
         print('Initializing a git repository')
         commands = ['git init',
                     'git add .',
@@ -155,6 +187,11 @@ Contact Information = {self.e_mail}
 
 
     def create_main(self):
+        """
+        Creates a Python main file in the src directory.
+
+        :return:
+        """
         file = self.root_dir.joinpath(f'src/{self.main_file}')
         open(file, 'a').close()
         print(f'Created "{self.main_file}" file in src')
@@ -307,10 +344,7 @@ if __name__ == "__main__":
     if args['environment_engine'] == 'anaconda':
         project_init.create_Conda_env()
         project_init.create_jupyter_anaconda()
-    elif args['environment_engine'] == 'virtualenv':
-        project_init.create_requirements()
-        project_init.create_virtualenv_env()
-    #project_init.create_requirements()
+    project_init.create_requirements()
     if args['readme'] =='y':
         project_init.create_readme()
     if args['git'] == 'y':
