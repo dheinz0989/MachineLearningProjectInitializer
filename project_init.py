@@ -1,9 +1,8 @@
 from os import environ
 from platform import system
 import argparse
-from packaging import version
+import re
 import subprocess
-import requests
 from pathlib import Path
 
 user = environ['USERNAME'] if 'USERNAME' in list(environ.keys()) else ""
@@ -23,13 +22,8 @@ class Project_Initializer:
                  requirements,
                  docker = '',
                  env_name = '',
-                 readme = 'y',
-                 git = 'y',
-                 env_builder = '',
                  jupyter= '',
-                 package_installer = 'pip',
                  root_overwrite='n'):
-
         self.project_name = project_name
         self.user = user
         self.e_mail = e_mail
@@ -40,11 +34,7 @@ class Project_Initializer:
         self.requirements = requirements
         self.docker = docker
         self.env_name = env_name
-        self.readme = readme
-        self.git = git
-        self.env_builder = env_builder
         self.jupyter = jupyter
-        self.package_installer = package_installer
         self.root_dir.mkdir(exist_ok=True) if root_overwrite=='y' else self.root_dir.mkdir(exist_ok=False)
 
 
@@ -77,138 +67,65 @@ CMD ["python", "{self.main_file}" ]
             print(f'Create or replacing subdirectory {d}')
             self.root_dir.joinpath(d).mkdir(exist_ok=True)
 
-    #def create_requirements(self):
-    #    if self.requirements:
-    #        packages_with_version = [f for f in self.requirements if '==' in f]
-    #        packages_without_version = self.list_diff(self.requirements,packages_with_version)
-    #        self.packages = [package + '=='+self.get_latest_version(package) for package in packages_without_version] + packages_with_version
-    #        jupyter_nb = [p for p in self.packages if 'notebook' in p]
-    #        jupyter_lab = [p for p in self.packages if 'jupyterlab' in p]
-    #        if not any([jupyter_nb,jupyter_lab]):
-    #            if self.jupyter:
-    #                jupyter_mapping = {
-    #                    'notebook':'notebook',
-    #                    'lab':'jupyterlab'
-    #                }
-    #                self.packages.append(jupyter_mapping[self.jupyter]+"=="+self.get_latest_version(jupyter_mapping[self.jupyter]))
-    #        print(f'writing a requirements.txt file with the following entries: {self.packages}')
-    #        file = self.root_dir.joinpath('requirements.txt')
-    #        with open(file, 'w') as require:
-    #            require.write('\n'.join(self.packages))
-
-    #def create_requirements(self):
-
-    @staticmethod
-    def list_diff(a,b):
-        '''
-        Returns a list of all entries which are not found in both lists.
-
-        :param a:
-        :param b:
-        :return:
-        '''
-        return list(set(a).symmetric_difference(set(b)))
-
-    @staticmethod
-    def get_latest_version(package):
-        '''
-        Retrieves the package's latest version found in the pypi Homepage which is used by "pip install"
-
-        :param package:
-        :return:
-        '''
-        print(f'Retrieving latest version for package {package}')
-        pypi_url = f"https://pypi.python.org/pypi/{package}/json"
-        resp = requests.get(pypi_url)
-        try:
-            versions = list(resp.json()["releases"].keys())
-            latest_version = str(max([version.parse(v) for v in versions]))
-            return latest_version
-        except Exception:
-            print(f'Package {package} was not found at pypi. You need to add the version number in the requirement.txt file afterwards.')
-            return
-
-    def create_env(self):
-       if not self.env_builder:
-            return
-       if system()=='Windows':
-           if self.env_builder=='anaconda':
-               if 'CONDA_PREFIX' in list(environ.keys()):
-                   prefix = environ['CONDA_PREFIX']
-               else:
-                   prefix = ''
-                   print('Warning: The User Profile prefix was not found in the enviornment variables. '
-                         'The environment setup script needs to be adapted. To do this, locate the "activate.bat" file in your virtual environ setup.')
-               if self.package_installer=='conda':
-                   env_cmd = \
-f'''@echo off
-CALL {prefix}\\Scripts\\activate.bat
-CALL conda create --name {self.env_name} --yes
-CALL conda activate {self.env_name}
-FOR /F "delims=~" %%f in (requirements.txt) DO CALL conda install --yes "%%f" || CALL conda install --yes -c conda-forge "%%f"
-echo All requirements have been installed
-echo You can safely delete this file now
-cmd /K'''
-               else:
-                   env_cmd= \
-f'''@echo off
-conda create --name {self.env_name} --yes python={self.python_version} {" ".join(self.packages)}
-CALL conda.bat activate {self.env_name}
-FOR /F "delims=~" %%f in (requirements.txt) DO CALL pip install "%%f"
-echo All requirements have been installed
-echo You can safely delete this file now
-cmd /K'''
-
-
-           elif self.env_builder=='virtualenv':
-               if 'USERPROFILE' in list(environ.keys()):
-                   prefix = environ['USERPROFILE']
-               else:
-                   prefix = ''
-                   print('Warning: The User Profile prefix was not found in the enviornment variables. '
-                         'The environment setup script needs to be adapted. To do this, locate the "activate.bat" file in your virtual environ setup.')
-               env_cmd = \
-f'''pip install virtualenv
-virtualenv {self.env_name}
-{prefix}\\{self.env_name}\\Scripts\\activate.bat
-FOR /F "delims=~" %%f in (requirements.txt) DO pip install "%%f"
-echo All requirements have been installed
-echo You can safely delete this file now
-cmd /K'''
-           file = self.root_dir.joinpath(f'setup_{self.env_name}_env.bat')
-           with open(file, 'w') as env_setup:
-               env_setup.write(env_cmd)
-           print(f'Successfully create an environment setup script for {self.env_name}. Run it once to create the environment. Afterwards, it can safely be deleted')
-
-    def create_jupyter(self):
-        if not self.jupyter:
-            return
-        Path('notebooks').mkdir(exist_ok=True)
-        if system() == 'Windows':
-            if self.env_builder == 'anaconda':
-                jupyter_cmd = \
-f'''conda activate {self.env_name}
-jupyter {self.jupyter}'''
-            elif self.env_builder == 'virtualenv':
-                if 'USERPROFILE' in list(environ.keys()):
-                    prefix = environ['USERPROFILE']
+    def create_requirements(self):
+        if self.requirements:
+            out = []
+            for p in self.requirements:
+                if not "==" in p:
+                    pip_output = subprocess.run(['pip', 'show', p], stdout=subprocess.PIPE, shell=True).stdout.decode('utf-8')
+                    try:
+                        version = re.search('(\d+\.)?(\d+\.)?(\*|\d+)', pip_output).group(0)
+                    except AttributeError:
+                        version = ''
+                    out.append(p + '==' + version)
                 else:
-                    prefix = ''
-                    print('Warning: The User Profile prefix was not found in the enviornment variables. '
-                          'The jupyter setup script needs to be adapted. To do provide the full path to locate the "activate.bat" file in your virtual directory.')
-                jupyter_cmd = \
-f'''{prefix}\\{self.env_name}\\Scripts\\activate.bat
-jupyter {self.jupyter}'''
-        file = self.root_dir.joinpath('notebooks/launch_jupyter.bat')
-        with open(file, 'w') as jupyter:
-            jupyter.write(jupyter_cmd)
-        print(f"Successfully create a jupyter {self.jupyter} launcher batch file which can be used to activate"
-              f" the '{self.env_name}' environment and work in a jupyter {self.jupyter} environment")
+                    out.append(p)
+            print(f'writing a requirements.txt file with the following entries: {out}')
+            file = self.root_dir.joinpath('requirements.txt')
+            with open(file, 'w') as require:
+                require.write('\n'.join(out))
 
+
+    def create_Conda_env(self):
+       if system()=='Windows':
+            print('Creating a virtual environment using Anaconda')
+            jupyter_nb = [p for p in self.requirements if 'notebook' in p]
+            jupyter_lab = [p for p in self.requirements if 'jupyterlab' in p]
+            if not any([jupyter_nb,jupyter_lab]):
+                if self.jupyter:
+                    jupyter_mapping = {
+                        'notebook':'notebook',
+                        'lab':'jupyterlab'
+                    }
+                    self.requirements.append(jupyter_mapping[self.jupyter])
+            env_cmd = f"CALL conda create --name {self.env_name} --yes --force {' '.join(self.requirements)}"
+            rc = subprocess.run(env_cmd, stdout=subprocess.PIPE, shell=True).stdout.decode('utf-8')
+            print(rc)
+
+    def create_jupyter_anaconda(self):
+        if system() == 'Windows':
+            Path('notebooks').mkdir(exist_ok=True)
+            if 'CONDA_PREFIX' in list(environ.keys()):
+                prefix = environ['CONDA_PREFIX']
+            else:
+                prefix = ''
+                print('Warning: The Anaconda Prefix  was not found in the environment variables. It is used to a '
+                      'You therefore need to adapt the jupyter_launcher script. To do this, locate the "activate.bat" '
+                      'file in your Anaconda distribution.It is expected to be found via C:\\Users\\`UserName`\\Anaconda3. '
+                      'Insert this path to the Scripts\\activate.bat.')
+
+            jupyter_cmd = \
+f'''CALL {prefix}\Scripts\\activate.bat
+CALL conda activate {self.env_name}
+CALL jupyter {self.jupyter}'''
+            file = self.root_dir.joinpath('notebooks/launch_jupyter.bat')
+            with open(file, 'w') as jupyter:
+                jupyter.write(jupyter_cmd)
+            print(f"Successfully create a jupyter {self.jupyter} launcher batch file which can be used to activate"
+                  f" the '{self.env_name}' environment and work in a jupyter {self.jupyter} environment")
 
     def create_readme(self):
-        if self.readme =='y':
-            readme_cmd = \
+        readme_cmd = \
 f'''
 # {self.project_name}
 # Prerequisites
@@ -222,17 +139,19 @@ Add documentation info here
 Author of this repo = {self.user}
 Contact Information = {self.e_mail}
 '''
-            file = self.root_dir.joinpath('README.md')
-            with open(file, 'w') as readme:
-                readme.write(readme_cmd)
-            print('Successfully created a README.md file')
+        file = self.root_dir.joinpath('README.md')
+        with open(file, 'w') as readme:
+            readme.write(readme_cmd)
+        print('Successfully created a README.md file')
 
-    def create_git(self):
-        if self.git == 'y':
-            commands = ['git init','git add .','git commit -m "initial commit"']
-            for cmd in commands:
-                
-            print('Initializing a git repository')
+    def initialize_git(self):
+        print('Initializing a git repository')
+        commands = ['git init',
+                    'git add .',
+                    'git commit -m "initial commit"']
+        for cmd in commands:
+            rc = subprocess.run(cmd.split(), stdout=subprocess.PIPE, shell=True).stdout.decode('utf-8')
+            print(rc)
 
 
     def create_main(self):
@@ -320,8 +239,8 @@ if __name__ == "__main__":
         '-eng',
         type=str,
         required=False,
-        default='',
-        choices=['anaconda','virtualenv'],
+        default='none',
+        choices=['anaconda','virtualenv','none'],
         help='Indicates how the virtual environment shall be built. At the moment, virtualenv or Anaconda can be used'
     )
     parser.add_argument(
@@ -348,7 +267,7 @@ if __name__ == "__main__":
         nargs='+',
         required=False,
         default=['pandas','numpy'],
-        help='A list of all packages written to a requirement file. If you want to add a version number, add the packages followed by "==" and the version.'
+        help='A list of all packages written to a requirement file. If you want to add a version number, add the packages followed by "=" and the version.'
              ' If only given the package name, an automated search will retrieve the latest version and write it into the requirement file.'
              'Jupyter notebook and/or labs are automatically if not provided'
     )
@@ -366,13 +285,7 @@ if __name__ == "__main__":
         default='n',
         help='Indicates if the root directory file shall be overwritten'
     )
-    parser.add_argument(
-        '--installer',
-        '-i',
-        default ='pip',
-        choices=['pip','conda'],
-        help='Indicate which installer shall be used upon creating a virtual environment using anaconda. '
-    )
+
     args = vars(parser.parse_args())
     project_init = Project_Initializer(
         user=args['user'],
@@ -384,18 +297,22 @@ if __name__ == "__main__":
         requirements=args['packages'],
         docker=args['docker'],
         project_name=args['project_name'],
-        git=args['git'],
         env_name=args['environment'],
-        env_builder=args['environment_engine'],
         jupyter=args['jupyter'],
         root_overwrite=args['overwrite_root'],
-        package_installer=args['installer']
     )
     project_init.create_dir()
-    #project_init.create_requirements()
-    project_init.create_Dockerfile()
-    project_init.create_env()
-    project_init.create_jupyter()
-    project_init.create_git()
-    project_init.create_readme()
     project_init.create_main()
+    project_init.create_Dockerfile()
+    if args['environment_engine'] == 'anaconda':
+        project_init.create_Conda_env()
+        project_init.create_jupyter_anaconda()
+    elif args['environment_engine'] == 'virtualenv':
+        project_init.create_requirements()
+        project_init.create_virtualenv_env()
+    #project_init.create_requirements()
+    if args['readme'] =='y':
+        project_init.create_readme()
+    if args['git'] == 'y':
+        project_init.initialize_git()
+

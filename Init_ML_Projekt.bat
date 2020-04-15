@@ -5,10 +5,10 @@ python project_init.py -n MyMachineLearningProject ^
  -v 3.8 ^
  -f app.py ^
  -r C:\Daten\Trainings\AnotherRepo ^
- -e deleteme ^
- -eng anaconda ^
+ -e myvirtualenv ^
+ -eng virtualenv ^
  -j lab ^
- -g y ^
+ -g n ^
  -p numpy pandas matplotlib ^
  -owr y
  
