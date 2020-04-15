@@ -25,13 +25,16 @@ class Project_Initializer:
                  readme = 'y',
                  git = 'y',
                  env_builder = '',
-                 jupyter= ''):
+                 jupyter= '',
+                 package_installer = 'pip',
+                 root_overwrite='n'):
+
         self.project_name = project_name
         self.user = user
         self.e_mail = e_mail
         self.python_version = python_version
         self.main_file = main_file
-        self.root_dir = root_dir
+        self.root_dir = Path(root_dir)
         self.dirs = dirs
         self.requirements = requirements
         self.docker = docker
@@ -40,6 +43,9 @@ class Project_Initializer:
         self.git = git
         self.env_builder = env_builder
         self.jupyter = jupyter
+        self.package_installer = package_installer
+        self.root_dir.mkdir(exist_ok=True) if root_overwrite=='y' else self.root_dir.mkdir(exist_ok=False)
+
 
     def create_Dockerfile(self,):
         image = '-' + self.docker if self.docker else ''
@@ -55,7 +61,8 @@ COPY src /app
 RUN pip install -r requirements.txt
 CMD ["python", "{self.main_file}" ]
         """
-        with open('Dockerfile', 'w') as dfile:
+        file = self.root_dir.joinpath('Dockerfile')
+        with open(file, 'w') as dfile:
             dfile.write(docker)
         print('Successfully generated a Dockerfile')
 
@@ -67,17 +74,29 @@ CMD ["python", "{self.main_file}" ]
         '''
         for d in self.dirs:
             print(f'Create or replacing subdirectory {d}')
-            Path(d).mkdir(exist_ok=True)
+            self.root_dir.joinpath(d).mkdir(exist_ok=True)
 
-    def create_requirements(self):
-        if self.requirements:
-            packages_with_version = [f for f in self.requirements if '==' in f]
-            packages_without_version = self.list_diff(self.requirements,packages_with_version)
-            packages = [package + '=='+self.get_latest_version(package) for package in packages_without_version] + packages_with_version
-            print(f'writing a requirements.txt file with the following entries: {packages}')
-            with open('requirements.txt', 'w') as require:
-                require.write('\n'.join(packages))
-    # add git init
+    #def create_requirements(self):
+    #    if self.requirements:
+    #        packages_with_version = [f for f in self.requirements if '==' in f]
+    #        packages_without_version = self.list_diff(self.requirements,packages_with_version)
+    #        self.packages = [package + '=='+self.get_latest_version(package) for package in packages_without_version] + packages_with_version
+    #        jupyter_nb = [p for p in self.packages if 'notebook' in p]
+    #        jupyter_lab = [p for p in self.packages if 'jupyterlab' in p]
+    #        if not any([jupyter_nb,jupyter_lab]):
+    #            if self.jupyter:
+    #                jupyter_mapping = {
+    #                    'notebook':'notebook',
+    #                    'lab':'jupyterlab'
+    #                }
+    #                self.packages.append(jupyter_mapping[self.jupyter]+"=="+self.get_latest_version(jupyter_mapping[self.jupyter]))
+    #        print(f'writing a requirements.txt file with the following entries: {self.packages}')
+    #        file = self.root_dir.joinpath('requirements.txt')
+    #        with open(file, 'w') as require:
+    #            require.write('\n'.join(self.packages))
+
+    #def create_requirements(self):
+
     @staticmethod
     def list_diff(a,b):
         '''
@@ -113,14 +132,32 @@ CMD ["python", "{self.main_file}" ]
             return
        if system()=='Windows':
            if self.env_builder=='anaconda':
-               env_cmd = \
+               if 'CONDA_PREFIX' in list(environ.keys()):
+                   prefix = environ['CONDA_PREFIX']
+               else:
+                   prefix = ''
+                   print('Warning: The User Profile prefix was not found in the enviornment variables. '
+                         'The environment setup script needs to be adapted. To do this, locate the "activate.bat" file in your virtual environ setup.')
+               if self.package_installer=='conda':
+                   env_cmd = \
 f'''@echo off
-conda create --name {self.env_name} --yes
-conda activate {self.env_name}
-FOR /F "delims=~" %%f in (requirements.txt) DO conda install --yes "%%f" || conda install --yes -c conda-forge "%%f" || pip install "%%f"
+CALL {prefix}\\Scripts\\activate.bat
+CALL conda create --name {self.env_name} --yes
+CALL conda activate {self.env_name}
+FOR /F "delims=~" %%f in (requirements.txt) DO CALL conda install --yes "%%f" || CALL conda install --yes -c conda-forge "%%f"
 echo All requirements have been installed
 echo You can safely delete this file now
 cmd /K'''
+               else:
+                   env_cmd= \
+f'''@echo off
+conda create --name {self.env_name} --yes python={self.python_version} {" ".join(self.packages)}
+CALL conda.bat activate {self.env_name}
+FOR /F "delims=~" %%f in (requirements.txt) DO CALL pip install "%%f"
+echo All requirements have been installed
+echo You can safely delete this file now
+cmd /K'''
+
 
            elif self.env_builder=='virtualenv':
                if 'USERPROFILE' in list(environ.keys()):
@@ -137,7 +174,8 @@ FOR /F "delims=~" %%f in (requirements.txt) DO pip install "%%f"
 echo All requirements have been installed
 echo You can safely delete this file now
 cmd /K'''
-           with open(f'setup_{self.env_name}_env.bat', 'w') as env_setup:
+           file = self.root_dir.joinpath(f'setup_{self.env_name}_env.bat')
+           with open(file, 'w') as env_setup:
                env_setup.write(env_cmd)
            print(f'Successfully create an environment setup script for {self.env_name}. Run it once to create the environment. Afterwards, it can safely be deleted')
 
@@ -160,7 +198,8 @@ jupyter {self.jupyter}'''
                 jupyter_cmd = \
 f'''{prefix}\\{self.env_name}\\Scripts\\activate.bat
 jupyter {self.jupyter}'''
-        with open('notebooks/launch_jupyter.bat', 'w') as jupyter:
+        file = self.root_dir.joinpath('notebooks/launch_jupyter.bat')
+        with open(file, 'w') as jupyter:
             jupyter.write(jupyter_cmd)
         print(f"Successfully create a jupyter {self.jupyter} launcher batch file which can be used to activate"
               f" the '{self.env_name}' environment and work in a jupyter {self.jupyter} environment")
@@ -182,23 +221,31 @@ Add documentation info here
 Author of this repo = {self.user}
 Contact Information = {self.e_mail}
 '''
-            with open('README.md', 'w') as readme:
+            file = self.root_dir.joinpath('README.md')
+            with open(file, 'w') as readme:
                 readme.write(readme_cmd)
             print('Successfully created a README.md file')
 
     def create_git(self):
         if self.git == 'y':
             git_cmd = \
-f'''git init
+f'''@echo off
+git init
 git add .
 git commit -m "initial commit"
+echo Repository has been initiliazed
 echo You can safely delete this file now
 cmd /K
             '''
-            with open('init_git.bat','w') as file:
+            file = self.root_dir.joinpath('init_git.bat')
+            with open(file, 'w') as file:
                 file.write(git_cmd)
             print('Created a "init_git.bat" batch file which can be called once. It can safely deleted afterwards')
 
+    def create_main(self):
+        file = self.root_dir.joinpath(f'src/{self.main_file}')
+        open(file, 'a').close()
+        print(f'Created "{self.main_file}" file in src')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Module for creating a Python-based Machine Learning directory.')
@@ -310,6 +357,7 @@ if __name__ == "__main__":
         default=['pandas','numpy'],
         help='A list of all packages written to a requirement file. If you want to add a version number, add the packages followed by "==" and the version.'
              ' If only given the package name, an automated search will retrieve the latest version and write it into the requirement file.'
+             'Jupyter notebook and/or labs are automatically if not provided'
     )
     parser.add_argument(
         '--git',
@@ -317,6 +365,20 @@ if __name__ == "__main__":
         type=str,
         default='y',
         help='Indicates if a initialization script for git shall be created. y if so'
+    )
+    parser.add_argument(
+        '--overwrite_root',
+        '-owr',
+        type=str,
+        default='n',
+        help='Indicates if the root directory file shall be overwritten'
+    )
+    parser.add_argument(
+        '--installer',
+        '-i',
+        default ='pip',
+        choices=['pip','conda'],
+        help='Indicate which installer shall be used upon creating a virtual environment using anaconda. '
     )
     args = vars(parser.parse_args())
     project_init = Project_Initializer(
@@ -332,12 +394,15 @@ if __name__ == "__main__":
         git=args['git'],
         env_name=args['environment'],
         env_builder=args['environment_engine'],
-        jupyter=args['jupyter']
+        jupyter=args['jupyter'],
+        root_overwrite=args['overwrite_root'],
+        package_installer=args['installer']
     )
     project_init.create_dir()
-    project_init.create_requirements()
+    #project_init.create_requirements()
     project_init.create_Dockerfile()
     project_init.create_env()
     project_init.create_jupyter()
     project_init.create_git()
     project_init.create_readme()
+    project_init.create_main()
