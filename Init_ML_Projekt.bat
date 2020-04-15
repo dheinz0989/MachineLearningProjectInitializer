@@ -5,8 +5,8 @@ python project_init.py -n MyMachineLearningProject ^
  -v 3.8 ^
  -f app.py ^
  -r C:\Daten\Trainings\AnotherRepo ^
- -e myvirtualenv ^
- -eng virtualenv ^
+ -e myenvironment ^
+ -eng anaconda ^
  -j lab ^
  -g n ^
  -p numpy pandas matplotlib ^
